@@ -87,6 +87,11 @@ with st.sidebar:
             st.success("Journal entry saved to Cognee Cloud!")
             st.rerun()
 
+    st.divider()
+    st.markdown(
+        "[🔗 GitHub Repo](https://github.com/rudrakhairnar16-bit/External-Therapist) — ⭐ star it!"
+    )
+
 tab_chat, tab_graph, tab_about = st.tabs(["💬 Therapy Chat", "🧠 Memory Graph", "ℹ️ About"])
 
 with tab_chat:
