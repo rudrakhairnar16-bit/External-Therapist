@@ -1,102 +1,78 @@
-import asyncio
 import json
-import sqlite3
 import uuid
-from datetime import datetime
-from pathlib import Path
 from typing import Any
 
-DB_PATH = Path(__file__).resolve().parent.parent.parent / "external_therapist.db"
+import httpx
 
+from app.core import config
 
-def _run_sync(fn, *args, **kwargs):
-    return asyncio.to_thread(fn, *args, **kwargs)
+API_BASE = f"{config.COGNEE_BASE_URL}/api/v1"
+HEADERS = {"X-Api-Key": config.COGNEE_API_KEY}
 
-
-def _init_db():
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS memories (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            memory_type TEXT NOT NULL,
-            content TEXT NOT NULL,
-            metadata TEXT DEFAULT '{}',
-            created_at TEXT NOT NULL
-        )"""
-    )
-    conn.commit()
-    conn.close()
-
-
-def _sync_remember(user_id: str, content: str, metadata: str) -> str:
-    conn = sqlite3.connect(str(DB_PATH))
-    mem_id = str(uuid.uuid4())
-    meta = json.loads(metadata)
-    conn.execute(
-        "INSERT INTO memories (id, user_id, memory_type, content, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (
-            mem_id,
-            user_id,
-            meta.get("type", "memory"),
-            content,
-            metadata,
-            datetime.utcnow().isoformat(),
-        ),
-    )
-    conn.commit()
-    conn.close()
-    return mem_id
-
-
-def _sync_recall(user_id: str, top_k: int) -> list[dict[str, Any]]:
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        """SELECT id, memory_type, content, metadata, created_at
-           FROM memories
-           WHERE user_id = ?
-           ORDER BY created_at DESC
-           LIMIT ?""",
-        (user_id, top_k),
-    ).fetchall()
-    conn.close()
-    results = []
-    for row in rows:
-        results.append(
-            {
-                "id": row["id"],
-                "type": row["memory_type"],
-                "content": row["content"],
-                "metadata": json.loads(row["metadata"]),
-                "created_at": row["created_at"],
-            }
-        )
-    return results
-
-
-def _sync_delete_memory(user_id: str, memory_id: str | None = None):
-    conn = sqlite3.connect(str(DB_PATH))
-    if memory_id:
-        conn.execute("DELETE FROM memories WHERE id = ? AND user_id = ?", (memory_id, user_id))
-    else:
-        conn.execute("DELETE FROM memories WHERE user_id = ?", (user_id,))
-    conn.commit()
-    conn.close()
-
-
-_init_db()
+TIMEOUT_ADD = 60
+TIMEOUT_RECALL = 30
+TIMEOUT_DATASET = 15
 
 
 class EternalMemory:
     def __init__(self, user_id: str):
         self.user_id = user_id
+        self.dataset_name = f"therapy_{user_id}"
 
     async def remember(self, content: str, metadata: dict | None = None) -> str:
-        return await _run_sync(_sync_remember, self.user_id, content, json.dumps(metadata or {}))
+        text = content
+        if metadata:
+            text = f"{content}\n\nMETADATA: {json.dumps(metadata)}"
+
+        content_bytes = text.encode("utf-8")
+        files = {"data": ("memory.txt", content_bytes, "text/plain")}
+        data = {"datasetName": self.dataset_name}
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{API_BASE}/remember",
+                data=data,
+                files=files,
+                headers=HEADERS,
+                timeout=TIMEOUT_ADD,
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            return result.get("id", str(uuid.uuid4()))
 
     async def recall(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
-        return await _run_sync(_sync_recall, self.user_id, top_k)
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{API_BASE}/recall",
+                json={
+                    "query": query,
+                    "datasets": [self.dataset_name],
+                    "topK": top_k,
+                    "searchType": "GRAPH_COMPLETION",
+                },
+                headers=HEADERS,
+                timeout=TIMEOUT_RECALL,
+            )
+            if resp.status_code == 422:
+                return []
+            resp.raise_for_status()
+            results = resp.json()
+
+        parsed = []
+        for r in results if isinstance(results, list) else []:
+            source = r.get("source", "")
+            if source == "graph":
+                parsed.append(
+                    {
+                        "id": r.get("dataset_id", str(uuid.uuid4())),
+                        "type": "graph",
+                        "content": r.get("text", ""),
+                        "metadata": r.get("metadata", {}),
+                        "score": r.get("score", 0),
+                        "created_at": "",
+                    }
+                )
+        return parsed
 
     async def recall_formatted(self, query: str, top_k: int = 5) -> str:
         results = await self.recall(query, top_k=top_k)
@@ -104,9 +80,8 @@ class EternalMemory:
             return "No previous memories found."
         parts = []
         for i, r in enumerate(results, 1):
-            ts = r.get("created_at", "unknown")
-            content = r.get("content", "")
-            parts.append(f"[{i}] ({ts}) {content[:300]}")
+            content = r.get("content", "")[:300]
+            parts.append(f"[{i}] {content}")
         return "\n".join(parts)
 
     async def recall_context(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
@@ -125,16 +100,45 @@ class EternalMemory:
         )
 
     async def enrich_graph(self):
-        pass
-
-    async def delete_memory(self, memory_id: str):
-        await _run_sync(_sync_delete_memory, self.user_id, memory_id)
-
-    async def delete_all(self):
-        await _run_sync(_sync_delete_memory, self.user_id, None)
+        await self.improve()
 
     async def improve(self):
+        async with httpx.AsyncClient() as client:
+            try:
+                await client.post(
+                    f"{API_BASE}/improve",
+                    json={"datasetName": self.dataset_name, "runInBackground": True},
+                    headers=HEADERS,
+                    timeout=TIMEOUT_RECALL,
+                )
+            except Exception:
+                pass
+
+    async def delete_memory(self, memory_id: str):
         pass
 
+    async def delete_all(self):
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.get(
+                    f"{API_BASE}/datasets",
+                    headers=HEADERS,
+                    timeout=TIMEOUT_DATASET,
+                )
+                if resp.is_success:
+                    datasets = resp.json()
+                    for ds in datasets if isinstance(datasets, list) else []:
+                        if ds.get("name") == self.dataset_name:
+                            await client.delete(
+                                f"{API_BASE}/datasets/{ds['id']}",
+                                headers=HEADERS,
+                                timeout=TIMEOUT_DATASET,
+                            )
+            except Exception:
+                pass
+
     async def forget(self, memory_id: str | None = None):
-        await _run_sync(_sync_delete_memory, self.user_id, memory_id)
+        if memory_id:
+            await self.delete_memory(memory_id)
+        else:
+            await self.delete_all()
