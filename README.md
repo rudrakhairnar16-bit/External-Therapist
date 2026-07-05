@@ -17,6 +17,7 @@
 | 🎥 **Demo Video** | [youtu.be/wGF6Dl9Q2zc](https://youtu.be/wGF6Dl9Q2zc) |
 | 💻 **GitHub Repo** | [github.com/rudrakhairnar16-bit/External-Therapist](https://github.com/rudrakhairnar16-bit/External-Therapist) |
 | 🔗 **LinkedIn** | [linkedin.com/in/rudra-khaire-2657a5381](https://www.linkedin.com/in/rudra-khaire-2657a5381) |
+| 🐦 **Twitter/X** | [x.com/rudrakhaire_](https://x.com/rudrakhaire_/status/2073752729097535915) |
 
 ---
 
