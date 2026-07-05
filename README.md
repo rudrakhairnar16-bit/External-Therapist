@@ -4,7 +4,19 @@
 
 [![Hackathon](https://img.shields.io/badge/Hackathon-Hangover%20Part%20AI-6C63FF)](https://hangoverpartai.com)
 [![Track](https://img.shields.io/badge/Track-Best%20Use%20of%20Cognee%20Cloud-00D4AA)](https://cognee.ai)
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://YOUR-APP-NAME.streamlit.app)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://external-therapist.streamlit.app)
+
+---
+
+## 🔗 Links
+
+| | |
+|---|---|
+| 🌐 **Live App** | [external-therapist.streamlit.app](https://external-therapist.streamlit.app) |
+| 📖 **Blog Post** | [contextos-second-brain-for-developer.hashnode.dev](https://contextos-second-brain-for-developer.hashnode.dev/the-eternal-therapist-building-an-ai-that-actually-remembers) |
+| 🎥 **Demo Video** | [youtu.be/wGF6Dl9Q2zc](https://youtu.be/wGF6Dl9Q2zc) |
+| 💻 **GitHub Repo** | [github.com/rudrakhairnar16-bit/External-Therapist](https://github.com/rudrakhairnar16-bit/External-Therapist) |
+| 🔗 **LinkedIn** | [linkedin.com/in/rudra-khaire-2657a5381](https://www.linkedin.com/in/rudra-khaire-2657a5381) |
 
 ---
 
@@ -63,7 +75,7 @@ The Eternal Therapist solves this with **Cognee Cloud's persistent memory layer*
 
 ```bash
 # Clone the repo
-git clone https://github.com/YOUR_USERNAME/External-Therapist.git
+git clone https://github.com/rudrakhairnar16-bit/External-Therapist.git
 cd External-Therapist
 
 # Create virtual environment
